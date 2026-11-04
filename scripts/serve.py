@@ -1,4 +1,5 @@
 """Loopback-only development workbench using the real plugin router and UI."""
+
 import argparse
 import importlib.util
 from pathlib import Path
@@ -13,14 +14,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def create_app(data_root):
-    spec = importlib.util.spec_from_file_location("network_xray_dev_api", ROOT / "dashboard" / "plugin_api.py")
+    spec = importlib.util.spec_from_file_location(
+        "network_xray_dev_api", ROOT / "dashboard" / "plugin_api.py"
+    )
     if spec is None or spec.loader is None:
         raise RuntimeError("Plugin router missing")
     module = importlib.util.module_from_spec(spec)
     sys.modules.setdefault(spec.name, module)
     spec.loader.exec_module(module)
     app = FastAPI(title="Network X-ray local workbench", docs_url=None, redoc_url=None)
-    app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]", "testserver"])
+    app.add_middleware(
+        TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]", "testserver"]
+    )
     app.include_router(module.router, prefix="/api/plugins/network-xray")
     app.dependency_overrides[module.get_service] = lambda: module._service_module.Service(data_root)
     app.mount("/", StaticFiles(directory=ROOT / "web", html=True), name="workbench")
