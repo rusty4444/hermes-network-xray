@@ -4,6 +4,7 @@ description: Compare DNS, TCP, verified TLS and HTTP evidence from two machines.
 author: Sam Russell
 license: MIT
 requires_hermes: ">=0.22.5"
+platforms: [linux, macos]
 provides_tools:
   - network_xray_probe
   - network_xray_import

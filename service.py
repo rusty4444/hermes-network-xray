@@ -1,4 +1,5 @@
 """Application service shared by tools, CLI and the HTTP adapter."""
+
 import json
 from pathlib import Path
 
@@ -11,17 +12,21 @@ class Service:
 
     def _store(self):
         from .network_xray.store import Store
+
         if self.root is not None:
             return Store(self.root)
         from plugins.plugin_storage import plugin_data_dir
+
         return Store(plugin_data_dir("network-xray"))
 
     def collect(self, url, label, connect_ip=None):
         from .network_xray.collector import probe
+
         return self._store().save_probe(probe(url, label, connect_ip=connect_ip), "local")
 
     def import_probe(self, bundle):
         from .network_xray.bundles import parse_bundle, validate_bundle
+
         checked = parse_bundle(bundle) if isinstance(bundle, str) else validate_bundle(bundle)
         return self._store().save_probe(checked, "imported")
 
@@ -33,6 +38,7 @@ class Service:
 
     def compare_probes(self, left_id, right_id):
         from .network_xray.compare import compare
+
         left = self.get_probe(left_id)
         right = self.get_probe(right_id)
         return compare(left["probe"], right["probe"])
@@ -42,6 +48,7 @@ class Service:
 
     def export_report(self, left_id, right_id):
         from .export import render_report
+
         comparison = self.compare_probes(left_id, right_id)
         origins = {
             left_id: self.get_probe(left_id)["origin"],
@@ -52,6 +59,7 @@ class Service:
 
 def _validate_args(name, args):
     from .schemas import TOOL_SCHEMAS
+
     if name not in TOOL_SCHEMAS or not isinstance(args, dict):
         raise ValueError("Unknown tool or invalid arguments")
     schema = TOOL_SCHEMAS[name]["parameters"]
@@ -59,7 +67,10 @@ def _validate_args(name, args):
         raise ValueError("Missing or unexpected arguments")
     for key, value in args.items():
         spec = schema["properties"][key]
-        if not isinstance(value, str) or not spec.get("minLength", 0) <= len(value) <= spec["maxLength"]:
+        if (
+            not isinstance(value, str)
+            or not spec.get("minLength", 0) <= len(value) <= spec["maxLength"]
+        ):
             raise ValueError("Invalid argument type or length")
 
 
@@ -77,8 +88,23 @@ def handle_tool(name, args, service=None):
             result = service.list_probes()
         return json.dumps({"ok": True, "result": result}, allow_nan=False)
     except (ValueError, TypeError):
-        return json.dumps({"ok": False, "error": "Invalid input: check the URL, fields, bundle schema/digest, or matching probe targets."})
+        return json.dumps(
+            {
+                "ok": False,
+                "error": "Invalid input: check the URL, fields, bundle schema/digest, or matching probe targets.",
+            }
+        )
     except (FileNotFoundError, KeyError):
-        return json.dumps({"ok": False, "error": "Probe not found in this profile. List history and use its exact IDs."})
+        return json.dumps(
+            {
+                "ok": False,
+                "error": "Probe not found in this profile. List history and use its exact IDs.",
+            }
+        )
     except (OSError, RuntimeError):
-        return json.dumps({"ok": False, "error": "Network X-ray could not complete the operation. Check local storage and retry; no success is implied."})
+        return json.dumps(
+            {
+                "ok": False,
+                "error": "Network X-ray could not complete the operation. Check local storage and retry; no success is implied.",
+            }
+        )

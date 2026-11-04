@@ -446,7 +446,7 @@ export function createApp(React, api) {
           h('div', null, h('h4', null, test.title), h('p', null, test.reason), h('p', { className: 'nx-caption' }, 'Local backend only · confirmation required')),
           h(Button, { onClick: () => onPrepare(test) }, 'Review test →')))),
       h('section', { className: 'nx-limitations' }, h('h3', null, 'Limits of this comparison'),
-        h('ul', null, [...comparison.limitations, ...comparison.findings.filter(item => item.kind === 'limitation').map(item => item.text)]
+        h('ul', null, [...new Set([...comparison.limitations, ...comparison.findings.filter(item => item.kind === 'limitation').map(item => item.text)])]
           .map((text, index) => h('li', { key: index }, text)))));
   }
 

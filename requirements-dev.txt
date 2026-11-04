@@ -1,0 +1,8 @@
+# Development/workbench dependencies only; the collector has no third-party dependencies.
+pytest==9.2.0
+ruff==0.17.3
+playwright==1.64.1
+fastapi==0.162.0
+httpx==0.28.1
+uvicorn==0.54.0
+PyYAML==6.0.3

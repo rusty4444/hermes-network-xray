@@ -1,15 +1,20 @@
 """Native Hermes registrations; importing the plugin performs no I/O."""
+
 from pathlib import Path
+
 
 def _tool_handler(name):
     def handle(args, **kwargs):
         from .service import handle_tool
+
         return handle_tool(name, args)
+
     return handle
 
 
 def register(ctx):
     from .schemas import TOOL_SCHEMAS
+
     for name, schema in TOOL_SCHEMAS.items():
         ctx.register_tool(
             name=name,
@@ -19,6 +24,7 @@ def register(ctx):
             check_fn=lambda: True,
         )
     from .cli import configure, run
+
     ctx.register_cli_command(
         name="network-xray",
         help="Compare read-only network evidence from two vantage points",

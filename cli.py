@@ -1,4 +1,5 @@
 """Operator-invoked CLI; no remote execution or authentication helpers."""
+
 import json
 from pathlib import Path
 import sys
@@ -15,13 +16,16 @@ def configure(parser):
     compared = commands.add_parser("compare", help="Compare two saved IDs for the same URL")
     compared.add_argument("left_id")
     compared.add_argument("right_id")
-    compared.add_argument("--html", action="store_true", help="Print an escaped standalone HTML report")
+    compared.add_argument(
+        "--html", action="store_true", help="Print an escaped standalone HTML report"
+    )
     commands.add_parser("history", help="List saved probes in this profile")
     commands.add_parser("collector", help="Print the portable collector source to stdout")
 
 
 def run(args):
     from .service import Service
+
     service = Service()
     try:
         if args.xray_command == "probe":
@@ -45,5 +49,8 @@ def run(args):
         print(json.dumps(result, indent=2, allow_nan=False))
         return 0
     except (OSError, ValueError, TypeError, KeyError, RuntimeError):
-        print("Network X-ray failed: check your input, saved IDs and local storage. No success is implied.", file=sys.stderr)
+        print(
+            "Network X-ray failed: check your input, saved IDs and local storage. No success is implied.",
+            file=sys.stderr,
+        )
         return 1

@@ -1,4 +1,5 @@
 """Hermes-owned HTTP namespace. Only plugin-owned source is loaded here."""
+
 import hashlib
 import importlib
 import importlib.util
@@ -76,7 +77,10 @@ def _check_origin(request):
 
 async def _body(request, required, optional=()):
     _check_origin(request)
-    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/json":
+    if (
+        request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        != "application/json"
+    ):
         raise HTTPException(415, "Use application/json")
     buffer = bytearray()
     async for chunk in request.stream():
@@ -104,11 +108,15 @@ def _call(operation):
     try:
         return operation()
     except (ValueError, TypeError):
-        raise HTTPException(400, "Invalid input: check URL, fields, bundle schema/digest, and matching targets") from None
+        raise HTTPException(
+            400, "Invalid input: check URL, fields, bundle schema/digest, and matching targets"
+        ) from None
     except (FileNotFoundError, KeyError):
         raise HTTPException(404, "Probe not found in the active profile") from None
     except (OSError, RuntimeError):
-        raise HTTPException(503, "Operation failed; check local storage and retry. No success is implied") from None
+        raise HTTPException(
+            503, "Operation failed; check local storage and retry. No success is implied"
+        ) from None
 
 
 def _collect(service, values):
@@ -168,12 +176,19 @@ def collector(service=Depends(get_service)):
 @router.get("/collector.py", response_class=PlainTextResponse)
 def collector_download(service=Depends(get_service)):
     return PlainTextResponse(
-        _call(service.collector_source), media_type="text/x-python",
-        headers={"Content-Disposition": 'attachment; filename="network-xray-collector.py"', "X-Content-Type-Options": "nosniff"},
+        _call(service.collector_source),
+        media_type="text/x-python",
+        headers={
+            "Content-Disposition": 'attachment; filename="network-xray-collector.py"',
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
 @router.get("/export/{left_id}/{right_id}")
 def export_report(left_id: str, right_id: str, service=Depends(get_service)):
     left, right = _id(left_id), _id(right_id)
-    return {"filename": "network-xray-report.html", "html": _call(lambda: service.export_report(left, right))}
+    return {
+        "filename": "network-xray-report.html",
+        "html": _call(lambda: service.export_report(left, right)),
+    }
