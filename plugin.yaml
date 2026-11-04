@@ -1,0 +1,14 @@
+name: network-xray
+version: "0.1.0"
+description: Compare DNS, TCP, verified TLS and HTTP evidence from two machines. Read-only, local-first diagnostics with a visual Desktop workbench and portable collector.
+author: Sam Russell
+license: MIT
+requires_hermes: ">=0.22.5"
+provides_tools:
+  - network_xray_probe
+  - network_xray_import
+  - network_xray_compare
+  - network_xray_history
+provides_hooks: []
+provides_middleware: []
+requires_env: []

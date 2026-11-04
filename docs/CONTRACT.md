@@ -88,8 +88,11 @@ REST planned own namespace only, final registration per SDK preflight:
 - POST /import JSON {bundle:<object>} -> import_probe()
 - GET /probes/{id} -> get_probe()
 - POST /compare JSON {left_id,right_id} -> compare_probes()
-- GET /collector.py -> exact source collector (attachment)
-- GET /export/{left_id}/{right_id} -> self-contained HTML evidence report, no network resources
+- GET /collector -> {"filename":"network-xray-collector.py","source":<exact source text>} for SDK JSON transport
+- GET /collector.py -> exact source collector (attachment, ordinary browser/CLI clients)
+- GET /export/{left_id}/{right_id} -> {"filename":"network-xray-report.html","html":<self-contained escaped HTML evidence report>} for SDK JSON transport; no network resources
+
+UI adapter: `createApp(React, api)` exports a React component. `api.request(path,options={})` returns decoded JSON; options `{method,body,timeoutMs}` (body object, never pre-stringified in SDK). `api.ownerKey()` returns current connection/profile identity; `api.subscribeOwner(callback)` returns unsubscribe. Native adapter must use documented SDK state where available; the browser harness owner is a fixed isolated demo instance. On owner change reset selections/results, invalidate in-flight generations and refresh history. UI file import parses JSON locally only to submit `{bundle}`; server performs authoritative strict validation. Download exported source/HTML with Blob URLs created only after explicit user click, then revoke them.
 
 Cap HTTP request bodies before reading/parsing at 256 KiB. Pydantic fields strict/extra forbidden; errors safe. No arbitrary filename upload/read. Explicit user action required to run probes from UI; page load only reads history. If same shared backend serves browser contexts, enforce application-authenticated SDK route boundary and reject cross-origin unsafe methods through host or plugin guard. Standalone demo/dev server loopback-only with origin protections and no credentials.
 

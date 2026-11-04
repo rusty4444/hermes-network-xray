@@ -1,0 +1,16 @@
+{
+  "name": "hermes-network-xray",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Build tools for the Network X-ray Hermes plugin UI",
+  "scripts": {
+    "build": "node scripts/build-ui.mjs",
+    "check": "node --check desktop/plugin.js && node --check web/app.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  }
+}
