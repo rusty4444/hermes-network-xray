@@ -102,7 +102,7 @@ def test_oversized_body_rejected(client):
 def test_invalid_bundle_is_safe_400(client):
     response = client.post(
         "/api/plugins/network-xray/import",
-        json={"bundle": {"secret": "TEST-CANARY-NOT-A-REAL-SECRET"}},
+        json={"bundle_json": '{"secret":"TEST-CANARY-NOT-A-REAL-SECRET"}'},
     )
     assert response.status_code == 400
     assert "TEST-CANARY" not in response.text
