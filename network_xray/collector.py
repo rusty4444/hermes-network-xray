@@ -54,9 +54,8 @@ def permitted_ip(value):
     return str(address)
 
 
-def _hostname(raw):
-    if "%" in raw:
-        raise ValueError("Percent escapes and IPv6 zones are forbidden in hosts")
+def _numeric_hostname(raw):
+    """Apply the same IP policy before and after IDNA maps a hostname."""
     try:
         ipaddress.ip_address(raw)
     except ValueError:
@@ -68,10 +67,22 @@ def _hostname(raw):
         r"(?i)(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+))*", raw
     ):
         raise ValueError("Ambiguous numeric host")
+    return None
+
+
+def _hostname(raw):
+    if "%" in raw:
+        raise ValueError("Percent escapes and IPv6 zones are forbidden in hosts")
+    numeric = _numeric_hostname(raw)
+    if numeric is not None:
+        return numeric
     try:
         host = raw.encode("idna").decode("ascii").lower()
     except UnicodeError:
         raise ValueError("Invalid hostname") from None
+    numeric = _numeric_hostname(host)
+    if numeric is not None:
+        return numeric
     labels = host.rstrip(".").split(".")
     if len(host) > 253 or any(
         not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", item) for item in labels
