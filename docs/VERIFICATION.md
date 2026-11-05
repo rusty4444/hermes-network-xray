@@ -17,7 +17,7 @@ One non-failing development dependency warning reports Starlette's transition fr
 
 Actual Hermes 0.22.5 Doctor/discovery registered four tools, the CLI command and bundled skill. Catalog checks verified declared capabilities, no core overrides and the public Desktop SDK surface. An independent clean source runtime completed the supported PM installation and dependency-preparing catalog validation; the live user profile was not modified.
 
-The native Desktop demonstration ran in a disposable Electron 44.9.3 / Chromium 152.0.7977.167 app using Hermes source `bf0203a794a07aac3ff764972ab9087baa4e4f4e`. It exercised the real plugin host and `ctx.rest` path, local capture, peer import, comparison and report export with no renderer errors. Footage provenance is plugin commit `47b533ecf318f579090b57d4909435323758d984`, before the subsequent raw-JSON import transport fix. The six current browser import regressions verify the updated boundary; the recorded footage is not a claim that it ran later code.
+The native Desktop demonstration ran in a disposable Electron 44.9.3 / Chromium 152.0.7977.167 app using Hermes source `bf0203a794a07aac3ff764972ab9087baa4e4f4e`. It exercised the real plugin host and `ctx.rest` path, local capture, peer import, comparison and report export with no renderer errors. Footage provenance is published plugin commit `dafa4b320ba8a8cce723a86dca3334dd8e667ac3`, recorded locally as `47b533e` before commit-author metadata was normalised; both have tree `6f620b49fb0949501624bc461d215f853eb42451`. That revision predates the subsequent raw-JSON import transport fix. The six current browser import regressions verify the updated boundary; the recorded footage is not a claim that it ran later code.
 
 ## Real two-machine evidence
 
