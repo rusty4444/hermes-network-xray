@@ -13,6 +13,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import pytest
 from playwright.sync_api import sync_playwright, expect
 
+from network_xray import collector
+from network_xray.bundles import parse_bundle, seal_bundle
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -149,3 +152,76 @@ def test_real_probe_import_compare_evidence_and_download(workbench, tmp_path):
         service.shutdown()
         service.server_close()
         thread.join(timeout=3)
+
+
+@pytest.mark.parametrize("adapter", ["standalone", "native_adapter_contract"])
+@pytest.mark.parametrize("number_form", ["integral_float", "exponent", "negative_zero"])
+def test_import_numeric_forms_through_actual_ui_and_router(
+    workbench, tmp_path, adapter, number_form
+):
+    """Synthetic sealed inputs; real shared UI, adapter, router and storage."""
+    bundle = collector.empty_bundle(
+        collector.parse_target("https://example.test/"), "Synthetic float import"
+    )
+    bundle["capture"] = {
+        "status": "timeout",
+        "duration_ms": 12000.0,
+        "error": {"code": "deadline_exceeded", "message": "Synthetic timeout"},
+    }
+    if number_form == "negative_zero":
+        bundle["stages"][0]["duration_ms"] = -0.0
+    bundle = seal_bundle(bundle)
+    raw = json.dumps(bundle, separators=(",", ":"))
+    if number_form == "exponent":
+        raw = raw.replace('"duration_ms":12000.0', '"duration_ms":1.2e4')
+    assert parse_bundle(raw) == bundle
+    native_bundle = tmp_path / "native-harness.js"
+    if adapter == "native_adapter_contract":
+        subprocess.run(
+            [
+                str(ROOT / "node_modules/.bin/esbuild"),
+                str(ROOT / "tests/ui/native-transport-harness.js"),
+                "--bundle",
+                "--format=esm",
+                f"--outfile={native_bundle}",
+                f"--alias:@hermes/plugin-sdk={ROOT / 'tests/ui/sdk-test-shim.js'}",
+            ],
+            check=True,
+            cwd=ROOT,
+        )
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            if adapter == "native_adapter_contract":
+                page.route(
+                    "**/app.js",
+                    lambda route: route.fulfill(
+                        path=str(native_bundle), content_type="text/javascript"
+                    ),
+                )
+            page.goto(workbench)
+            page.get_by_text("Add the other perspective", exact=True).click()
+            with page.expect_response("**/api/plugins/network-xray/import") as imported:
+                page.get_by_label("Import peer bundle", exact=True).set_input_files(
+                    {
+                        "name": "synthetic.json",
+                        "mimeType": "application/json",
+                        "buffer": raw.encode(),
+                    }
+                )
+            response = imported.value
+            assert response.request.post_data_json == {"bundle_json": raw}
+            assert response.status == 200, response.text()
+            expect(
+                page.get_by_label("First perspective", exact=True).locator(
+                    f'option[value="{bundle["id"]}"]'
+                )
+            ).to_be_attached()
+            with urlopen(workbench + "/api/plugins/network-xray/probes/" + bundle["id"]) as saved:
+                result = json.load(saved)
+            assert result["origin"] == "imported"
+            assert result["probe"]["id"] == bundle["id"]
+            assert parse_bundle(json.dumps(result["probe"]))["integrity"] == bundle["integrity"]
+        finally:
+            browser.close()

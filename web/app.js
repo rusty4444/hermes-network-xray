@@ -13004,6 +13004,10 @@ function parseImportText(text) {
   }
   return bundle;
 }
+function buildImportPayload(text) {
+  parseImportText(text);
+  return { bundle_json: text };
+}
 function downloadText(filename, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const anchor = document.createElement("a");
@@ -13190,14 +13194,14 @@ function createApp(React2, api2) {
       setBusy("import");
       try {
         if (file.size > MAX_IMPORT_BYTES) throw new Error("Bundle is larger than 128 KiB. Export a single probe JSON file from the collector.");
-        let bundle;
+        let body;
         try {
-          bundle = parseImportText(await file.text());
+          body = buildImportPayload(await file.text());
         } catch (cause) {
           throw new Error(`This file is not valid JSON or contains duplicate keys. Choose an unmodified probe bundle. ${cause.message}`);
         }
         if (!current()) return;
-        const result = await request("/import", { method: "POST", body: { bundle } });
+        const result = await request("/import", { method: "POST", body });
         if (current()) acceptCapture(result, startingSelection);
       } catch (cause) {
         if (current()) setError(errorMessage(cause));

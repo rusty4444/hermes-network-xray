@@ -77,6 +77,13 @@ export function parseImportText(text) {
   return bundle;
 }
 
+export function buildImportPayload(text) {
+  // Validate syntax/duplicate keys, but transport the original text. JSON.parse +
+  // JSON.stringify would change Python float forms such as 12000.0 and -0.0.
+  parseImportText(text);
+  return { bundle_json: text };
+}
+
 export function downloadText(filename, text, type) {
   const url = URL.createObjectURL(new Blob([text], { type }));
   const anchor = document.createElement('a');
@@ -264,12 +271,12 @@ export function createApp(React, api) {
       setError(''); setNotice(''); setBusy('import');
       try {
         if (file.size > MAX_IMPORT_BYTES) throw new Error('Bundle is larger than 128 KiB. Export a single probe JSON file from the collector.');
-        let bundle;
-        try { bundle = parseImportText(await file.text()); }
+        let body;
+        try { body = buildImportPayload(await file.text()); }
         catch (cause) { throw new Error(`This file is not valid JSON or contains duplicate keys. Choose an unmodified probe bundle. ${cause.message}`); }
         // Reading a file can outlive a profile change. Never post it to the new owner.
         if (!current()) return;
-        const result = await request('/import', { method: 'POST', body: { bundle } });
+        const result = await request('/import', { method: 'POST', body });
         if (current()) acceptCapture(result, startingSelection);
       } catch (cause) { if (current()) setError(errorMessage(cause)); }
       finally { if (current()) setBusy(''); }

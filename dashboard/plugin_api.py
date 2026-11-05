@@ -42,6 +42,8 @@ def get_service():
 
 
 def _id(value):
+    if not isinstance(value, str):
+        raise HTTPException(400, "A canonical probe UUID string is required")
     try:
         parsed = uuid.UUID(value)
         if parsed.version != 4 or str(parsed) != value:
@@ -69,9 +71,19 @@ def _check_origin(request):
     if request.headers.get("sec-fetch-site") == "cross-site":
         raise HTTPException(403, "Cross-site requests are not accepted")
     if origin:
-        parsed = urlsplit(origin)
-        expected = urlsplit(str(request.url))
-        if origin == "null" or parsed.scheme != expected.scheme or parsed.netloc != expected.netloc:
+        try:
+            parsed = urlsplit(origin)
+            expected = urlsplit(str(request.url))
+        except ValueError:
+            raise HTTPException(403, "Malformed Origin is not accepted") from None
+        if (
+            origin == "null"
+            or parsed.scheme != expected.scheme
+            or parsed.netloc != expected.netloc
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
             raise HTTPException(403, "Cross-origin requests are not accepted")
 
 
@@ -150,10 +162,10 @@ async def probe(request: Request, service=Depends(get_service)):
 
 @router.post("/import")
 async def import_probe(request: Request, service=Depends(get_service)):
-    values = await _body(request, ("bundle",))
-    if not isinstance(values["bundle"], dict):
-        raise HTTPException(400, "Bundle must be a JSON object")
-    return await run_in_threadpool(_call, lambda: service.import_probe(values["bundle"]))
+    values = await _body(request, ("bundle_json",))
+    text = _string(values["bundle_json"], 131072)
+    # Keep number spellings intact until Python's authoritative parse/digest check.
+    return await run_in_threadpool(_call, lambda: service.import_probe(text))
 
 
 @router.get("/probes/{probe_id}")

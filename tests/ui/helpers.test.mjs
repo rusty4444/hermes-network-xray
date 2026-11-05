@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createOperationGuard, formatDuration, parseImportText, validateRequest, errorMessage } from '../../ui/app.js';
+import { buildImportPayload, createOperationGuard, formatDuration, parseImportText, validateRequest, errorMessage } from '../../ui/app.js';
+
+test('import transport preserves the original JSON number spellings', () => {
+  const raw = '{"a":12000.0,"b":-0.0,"c":1.2e4}';
+  assert.notEqual(JSON.stringify(JSON.parse(raw)), raw);
+  assert.deepEqual(JSON.parse(JSON.stringify(buildImportPayload(raw))), { bundle_json: raw });
+  assert.throws(() => buildImportPayload('{"a":1,"a":2}'), /Duplicate/);
+});
 
 test('new operations invalidate only their own slot', () => {
   const guard = createOperationGuard(() => 'owner-A');
