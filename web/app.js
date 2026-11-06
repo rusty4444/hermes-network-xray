@@ -12945,12 +12945,37 @@ var VERDICTS = {
 function formatDuration(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? `${value.toLocaleString(void 0, { maximumFractionDigits: 1 })} ms` : "Not measured";
 }
-function errorMessage(error) {
-  const message = typeof error === "string" ? error : error?.message;
-  if (/timeout|timed out|deadline|abort/i.test(message || "") || error?.name === "AbortError") {
-    return "The request timed out. This is not evidence of a DNS or connection failure. Refresh saved results before retrying; the backend may have completed the capture.";
+var IPC_WRAPPER = /^\s*Error invoking remote method '[^']*':\s*/;
+var HTTP_STATUS = /^(\d{3}): ([\s\S]*)$/;
+var MARKUP = /^\s*<|<\/?[a-z][\w-]*[\s>/]/i;
+var TIMEOUT_TEXT = /timeout|timed out|deadline|abort|did not answer within/i;
+var TRANSPORT_TEXT = /fetch failed|failed to fetch|network ?error|load failed|socket hang up|econn(?:reset|refused|aborted)|epipe|enotfound|ehostunreach|enetunreach|net::err_|connection (?:closed|reset|refused|lost)|expected json|but got html/i;
+var TIMED_OUT_TEXT = "The request timed out. This is not evidence of a DNS or connection failure. Refresh saved results before retrying; the backend may have completed the capture.";
+var UNREACHABLE_TEXT = "Could not reach the Network X-ray backend. This is about the connection to Hermes, not evidence about the target URL. Check that Hermes is running, then refresh saved results before retrying; the backend may have completed the capture.";
+function errorDetail(error) {
+  const raw = typeof error === "string" ? error : typeof error?.message === "string" ? error.message : "";
+  const wrapped = IPC_WRAPPER.exec(raw);
+  const message = wrapped ? raw.slice(wrapped[0].length).replace(/^Error:\s*/, "") : raw;
+  const match = HTTP_STATUS.exec(message);
+  if (!match) return { status: 0, message, wrapped: Boolean(wrapped) };
+  let detail = match[2];
+  let plain = true;
+  try {
+    const body = JSON.parse(match[2]);
+    plain = false;
+    detail = body && typeof body === "object" ? body.detail ?? body.error : body;
+    if (detail && typeof detail === "object") detail = detail.message;
+  } catch {
   }
-  return message || "The backend could not complete this request. Check the connection and try again.";
+  if (typeof detail !== "string" || plain && MARKUP.test(detail)) detail = "";
+  const status = Number(match[1]);
+  return { status, message: detail.trim() || `Backend rejected the request (HTTP ${status}). Check the URL or bundle and retry.`, wrapped: Boolean(wrapped) };
+}
+function errorMessage(error) {
+  const detail = errorDetail(error);
+  if (error?.name === "AbortError" || detail.status === 504 || TIMEOUT_TEXT.test(detail.message)) return TIMED_OUT_TEXT;
+  if (!detail.status && (detail.wrapped || TRANSPORT_TEXT.test(detail.message))) return UNREACHABLE_TEXT;
+  return detail.message || "The backend could not complete this request. Check the connection and try again.";
 }
 function createOperationGuard(ownerKey) {
   let active = true;

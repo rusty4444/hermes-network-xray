@@ -19,12 +19,48 @@ export function formatDuration(value) {
     ? `${value.toLocaleString(undefined, { maximumFractionDigits: 1 })} ms` : 'Not measured';
 }
 
+// Hermes Desktop's main process rejects ctx.rest calls with `${status}: ${body}`
+// (electron/api-transport.ts httpStatusError). Only the expected 404 reaches the page as is
+// (electron/api-expected-404.ts); every other rejection crosses ipcRenderer.invoke, which wraps
+// it as "Error invoking remote method 'hermes:api': Error: 400: {json}". Hermes strips the same
+// prefix itself (src/store/notifications.ts readableError).
+const IPC_WRAPPER = /^\s*Error invoking remote method '[^']*':\s*/;
+const HTTP_STATUS = /^(\d{3}): ([\s\S]*)$/;
+// A body that is not JSON is never shown if it holds markup (a proxy's `<h1>Bad Gateway</h1>`).
+const MARKUP = /^\s*<|<\/?[a-z][\w-]*[\s>/]/i;
+// 504 is the plugin host's deadline: "plugin 'network-xray' did not answer within 60s".
+const TIMEOUT_TEXT = /timeout|timed out|deadline|abort|did not answer within/i;
+// Failures below HTTP: the request may or may not have reached the backend.
+const TRANSPORT_TEXT = /fetch failed|failed to fetch|network ?error|load failed|socket hang up|econn(?:reset|refused|aborted)|epipe|enotfound|ehostunreach|enetunreach|net::err_|connection (?:closed|reset|refused|lost)|expected json|but got html/i;
+export const TIMED_OUT_TEXT = 'The request timed out. This is not evidence of a DNS or connection failure. Refresh saved results before retrying; the backend may have completed the capture.';
+export const UNREACHABLE_TEXT = 'Could not reach the Network X-ray backend. This is about the connection to Hermes, not evidence about the target URL. Check that Hermes is running, then refresh saved results before retrying; the backend may have completed the capture.';
+
+/** Status and readable message from a standalone or a Hermes Desktop (ctx.rest) rejection. */
+export function errorDetail(error) {
+  const raw = typeof error === 'string' ? error : (typeof error?.message === 'string' ? error.message : '');
+  const wrapped = IPC_WRAPPER.exec(raw);
+  const message = wrapped ? raw.slice(wrapped[0].length).replace(/^Error:\s*/, '') : raw;
+  const match = HTTP_STATUS.exec(message);
+  if (!match) return { status: 0, message, wrapped: Boolean(wrapped) };
+  let detail = match[2];
+  let plain = true;
+  try {
+    const body = JSON.parse(match[2]);
+    plain = false;
+    detail = body && typeof body === 'object' ? (body.detail ?? body.error) : body;
+    if (detail && typeof detail === 'object') detail = detail.message;
+  } catch { /* not JSON: keep the text unless it is markup */ }
+  if (typeof detail !== 'string' || (plain && MARKUP.test(detail))) detail = '';
+  const status = Number(match[1]);
+  return { status, message: detail.trim() || `Backend rejected the request (HTTP ${status}). Check the URL or bundle and retry.`, wrapped: Boolean(wrapped) };
+}
+
 export function errorMessage(error) {
-  const message = typeof error === 'string' ? error : error?.message;
-  if (/timeout|timed out|deadline|abort/i.test(message || '') || error?.name === 'AbortError') {
-    return 'The request timed out. This is not evidence of a DNS or connection failure. Refresh saved results before retrying; the backend may have completed the capture.';
-  }
-  return message || 'The backend could not complete this request. Check the connection and try again.';
+  const detail = errorDetail(error);
+  if (error?.name === 'AbortError' || detail.status === 504 || TIMEOUT_TEXT.test(detail.message)) return TIMED_OUT_TEXT;
+  // Anything Electron hands back without an HTTP status is a failure on the way to Hermes.
+  if (!detail.status && (detail.wrapped || TRANSPORT_TEXT.test(detail.message))) return UNREACHABLE_TEXT;
+  return detail.message || 'The backend could not complete this request. Check the connection and try again.';
 }
 
 // A slot is invalidated synchronously, before React effects can run.

@@ -4,14 +4,26 @@
 
 The test runner uses disposable HOME/HERMES_HOME directories and removes provider credentials from child environments.
 
-- `python scripts/test.py -q`: **189 tests passed**, zero failures or skips, on Python 3.12.13/macOS.
-- `node --test tests/ui/helpers.test.mjs`: **7 tests passed**.
+- `python scripts/test.py -q`: **191 tests passed** in two consecutive runs, zero failures or skips, on Python 3.12.13/macOS.
+- `node --test tests/ui/helpers.test.mjs`: **10 tests passed**.
 - `ruff check .`, `npm run build`, `npm run check` and generated-bundle checks passed.
 - Coverage includes supervised collectors, strict bundles, private storage, comparisons, adapters, HTTP boundaries, synthetic browser contracts and a real loopback browser workflow.
 - Import regressions exercise integral-valued floats, exponent forms and signed zero through the shared UI, both transport adapters and the real router/store. The native-adapter browser harness substitutes the SDK transport boundary; it is not an Electron integration test. Original IDs and digests survive, and tampered imports remain rejected.
 - Null comparison IDs and malformed/cross-origin headers return controlled client errors.
 
 One non-failing development dependency warning reports Starlette's transition from httpx to httpx2. It does not prevent tests or collector operation.
+
+## Hermes Desktop error display (after `75f1e45`)
+
+In Hermes Desktop, `ctx.rest` rejects with `${status}: ${body}` (`apps/desktop/electron/api-transport.ts`). For every status except 404, Electron's `ipcRenderer.invoke` then prefixes `Error invoking remote method 'hermes:api': Error: `. Up to `75f1e45` the page showed that text verbatim, so a rejected import read `Error invoking remote method 'hermes:api': Error: 400: {"detail": ...}`. The page now strips the prefix the way Hermes does (`src/store/notifications.ts` `readableError`) and shows the backend's `detail`. A body that is not JSON is never shown if it contains markup. A 504 from the plugin host ("did not answer within") reads as a timeout, as an aborted request already did. A failure with no HTTP status (`TypeError: fetch failed` behind the IPC prefix, or the browser's `Failed to fetch`) says it is about the connection to Hermes, not evidence about the target URL.
+
+The native-adapter browser harness (`tests/ui/native-transport-harness.js`) now rejects in exactly that shape. Before, it threw the bare `detail`, which is why the wrapped text was never caught.
+
+| Regression | On `75f1e45` | Fixed |
+|---|---|---|
+| `test_browser.py::test_a_rejected_import_shows_the_backend_detail_in_both_adapters[native_adapter_contract]` (a real 400 from the real router) | fails | passes |
+| `…[standalone]` | passes | passes |
+| `helpers.test.mjs`: Desktop rejections show the detail; markup, empty and non-JSON bodies; plugin-host deadline and IPC transport failures | 3 of 3 fail (run against `75f1e45`'s `ui/app.js` with the new constants inlined) | pass |
 
 ## Hermes integration
 

@@ -225,3 +225,57 @@ def test_import_numeric_forms_through_actual_ui_and_router(
             assert parse_bundle(json.dumps(result["probe"]))["integrity"] == bundle["integrity"]
         finally:
             browser.close()
+
+
+def _native_harness(tmp_path):
+    """The native adapter bundled with a ctx.rest that rejects as Hermes Desktop does."""
+    native_bundle = tmp_path / "native-harness.js"
+    subprocess.run(
+        [
+            str(ROOT / "node_modules/.bin/esbuild"),
+            str(ROOT / "tests/ui/native-transport-harness.js"),
+            "--bundle",
+            "--format=esm",
+            f"--outfile={native_bundle}",
+            f"--alias:@hermes/plugin-sdk={ROOT / 'tests/ui/sdk-test-shim.js'}",
+        ],
+        check=True,
+        cwd=ROOT,
+    )
+    return native_bundle
+
+
+@pytest.mark.parametrize("adapter", ["standalone", "native_adapter_contract"])
+def test_a_rejected_import_shows_the_backend_detail_in_both_adapters(workbench, tmp_path, adapter):
+    """A real 400 from the real router reads the same in both adapters, without the IPC wrapper."""
+    native_bundle = _native_harness(tmp_path) if adapter == "native_adapter_contract" else None
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            if native_bundle:
+                page.route(
+                    "**/app.js",
+                    lambda route: route.fulfill(path=str(native_bundle), content_type="text/javascript"),
+                )
+            page.goto(workbench)
+            page.get_by_text("Add the other perspective", exact=True).click()
+            with page.expect_response("**/api/plugins/network-xray/import") as imported:
+                page.get_by_label("Import peer bundle", exact=True).set_input_files(
+                    {
+                        "name": "not-a-bundle.json",
+                        "mimeType": "application/json",
+                        "buffer": b'{"kind": "not a probe bundle"}',
+                    }
+                )
+            assert imported.value.status == 400
+            expect(
+                page.get_by_text(
+                    "Invalid input: check URL, fields, bundle schema/digest, and matching targets",
+                    exact=True,
+                )
+            ).to_be_visible()
+            assert "Error invoking" not in page.locator("body").inner_text()
+            assert "hermes:api" not in page.locator("body").inner_text()
+        finally:
+            browser.close()
