@@ -41,7 +41,17 @@ An independent QUALITY review of the frozen `3c0c1f5` (manifest `3ca5796e…`) p
 | `test_browser.py::test_a_proxy_error_page_reads_as_a_backend_failure_without_markup` (both adapters) | 2 of 2 fail | pass |
 | `helpers.test.mjs`: status-aware markup text; errors the page raises itself; Hermes's diagnosis without a status | 3 of 3 fail (run against `3c0c1f5`'s `ui/app.js` with a `localError` export added) | pass |
 
-The reviewer's reproducers were re-run unchanged from scratch copies against the fixed commit. Their results are listed in the next subsection.
+The reviewer's reproducers were re-run unchanged from scratch copies against `928b9d1`:
+
+- `q08_client_import_mislabel.py` (real Chromium, both adapters, through the real import path): all five bad files show the file error, and no request is sent. `finding_reproduced: false`.
+- `q09_ab_old_new.mjs`: `host_hints_hidden_by_delta` is empty, so Hermes's diagnosis now shows. Its bad-file rows still read as unreachable. They build the error with `new Error(...)`, as the old `importFile` did, so they cannot see `localError`. q08 covers the real path.
+- `q03_parser_matrix.mjs`: 199 of 257 rows as before. The other 58 follow from F2 and F3:
+  - 50 markup or empty 401/403/5xx bodies now get the status-aware text instead of the probe's expected "Check the URL or bundle".
+  - 6 status-less Hermes messages are now shown after "Hermes could not complete the request:".
+  - 2 rows were already reported in the reviewer's own run: a body with a byte-order mark, and a hand-built standalone `SyntaxError`.
+  - The probe stores only the first 220 characters of each message, so the closing "not evidence about the target URL" sentence of the long Hermes messages is cut from its JSON. The full messages are 285 and 376 characters long and include it.
+  - No row leaks the IPC wrapper or markup, and no row throws.
+- `q04_browser.py` (real Chromium, real router, both adapters): 8 of 9 scenarios pass. S8 (connection refused) checks for the old sentence "the connection to Hermes", which F5 changed to "the connection to the backend". Its alert starts "Could not reach the Network X-ray backend. This is about the connection to the backend, not evidence about the target URL." The page recovers in S9.
 
 ## Hermes integration
 
