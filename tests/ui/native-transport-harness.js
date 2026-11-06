@@ -21,8 +21,8 @@ const ctx = {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
     } catch {
-      // Node's undici message in the main process, behind the same IPC prefix.
-      throw new Error("Error invoking remote method 'hermes:api': TypeError: fetch failed");
+      // Desktop's local plugin path uses Node http.request (electron/main.ts fetchJson), behind the same IPC prefix.
+      throw new Error("Error invoking remote method 'hermes:api': Error: connect ECONNREFUSED 127.0.0.1:9119");
     }
     const text = await response.text();
     if (!response.ok) {

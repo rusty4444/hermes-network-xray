@@ -31,9 +31,24 @@ const MARKUP = /^\s*<|<\/?[a-z][\w-]*[\s>/]/i;
 // 504 is the plugin host's deadline: "plugin 'network-xray' did not answer within 60s".
 const TIMEOUT_TEXT = /timeout|timed out|deadline|abort|did not answer within/i;
 // Failures below HTTP: the request may or may not have reached the backend.
-const TRANSPORT_TEXT = /fetch failed|failed to fetch|network ?error|load failed|socket hang up|econn(?:reset|refused|aborted)|epipe|enotfound|ehostunreach|enetunreach|net::err_|connection (?:closed|reset|refused|lost)|expected json|but got html/i;
+const TRANSPORT_TEXT = /fetch failed|failed to fetch|network ?error|load failed|socket hang up|econn(?:reset|refused|aborted)|epipe|enotfound|ehostunreach|enetunreach|net::err_|connection (?:closed|reset|refused|lost)/i;
+const NOT_TARGET = 'This is about the connection to the backend, not evidence about the target URL.';
 export const TIMED_OUT_TEXT = 'The request timed out. This is not evidence of a DNS or connection failure. Refresh saved results before retrying; the backend may have completed the capture.';
-export const UNREACHABLE_TEXT = 'Could not reach the Network X-ray backend. This is about the connection to Hermes, not evidence about the target URL. Check that Hermes is running, then refresh saved results before retrying; the backend may have completed the capture.';
+export const UNREACHABLE_TEXT = `Could not reach the Network X-ray backend. ${NOT_TARGET} Check that it is running, then refresh saved results before retrying; the backend may have completed the capture.`;
+
+/** An error the page raised itself (a bad file, say): shown as written, never classified as a request failure. */
+export function localError(message) {
+  const error = new Error(message);
+  error.local = true;
+  return error;
+}
+
+// A markup or empty error body leaves only the status to go on.
+function statusText(status) {
+  if (status === 401 || status === 403) return `Hermes or a proxy in front of it refused the request (HTTP ${status}). ${NOT_TARGET}`;
+  if (status >= 500) return `The Network X-ray backend failed (HTTP ${status}). ${NOT_TARGET} Refresh saved results before retrying.`;
+  return `Backend rejected the request (HTTP ${status}). Check the URL or bundle and retry.`;
+}
 
 /** Status and readable message from a standalone or a Hermes Desktop (ctx.rest) rejection. */
 export function errorDetail(error) {
@@ -52,14 +67,20 @@ export function errorDetail(error) {
   } catch { /* not JSON: keep the text unless it is markup */ }
   if (typeof detail !== 'string' || (plain && MARKUP.test(detail))) detail = '';
   const status = Number(match[1]);
-  return { status, message: detail.trim() || `Backend rejected the request (HTTP ${status}). Check the URL or bundle and retry.`, wrapped: Boolean(wrapped) };
+  return { status, message: detail.trim() || statusText(status), wrapped: Boolean(wrapped) };
 }
 
 export function errorMessage(error) {
+  if (error?.local && typeof error.message === 'string') return error.message;
   const detail = errorDetail(error);
   if (error?.name === 'AbortError' || detail.status === 504 || TIMEOUT_TEXT.test(detail.message)) return TIMED_OUT_TEXT;
-  // Anything Electron hands back without an HTTP status is a failure on the way to Hermes.
-  if (!detail.status && (detail.wrapped || TRANSPORT_TEXT.test(detail.message))) return UNREACHABLE_TEXT;
+  // Anything Electron hands back without an HTTP status failed on the way to the backend.
+  if (!detail.status && (detail.wrapped || TRANSPORT_TEXT.test(detail.message))) {
+    const said = detail.message.trim();
+    if (!detail.wrapped || !said || TRANSPORT_TEXT.test(said) || MARKUP.test(said)) return UNREACHABLE_TEXT;
+    // Hermes's own diagnosis (an auth proxy redirect, a missing endpoint, an incompatible gateway).
+    return `Hermes could not complete the request: ${said.length > 300 ? `${said.slice(0, 299)}…` : said} ${NOT_TARGET}`;
+  }
   return detail.message || 'The backend could not complete this request. Check the connection and try again.';
 }
 
@@ -306,10 +327,10 @@ export function createApp(React, api) {
       const startingSelection = selectionRevision.current;
       setError(''); setNotice(''); setBusy('import');
       try {
-        if (file.size > MAX_IMPORT_BYTES) throw new Error('Bundle is larger than 128 KiB. Export a single probe JSON file from the collector.');
+        if (file.size > MAX_IMPORT_BYTES) throw localError('Bundle is larger than 128 KiB. Export a single probe JSON file from the collector.');
         let body;
         try { body = buildImportPayload(await file.text()); }
-        catch (cause) { throw new Error(`This file is not valid JSON or contains duplicate keys. Choose an unmodified probe bundle. ${cause.message}`); }
+        catch (cause) { throw localError(`This file is not valid JSON or contains duplicate keys. Choose an unmodified probe bundle. ${cause.message}`); }
         // Reading a file can outlive a profile change. Never post it to the new owner.
         if (!current()) return;
         const result = await request('/import', { method: 'POST', body });

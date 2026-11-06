@@ -279,3 +279,53 @@ def test_a_rejected_import_shows_the_backend_detail_in_both_adapters(workbench, 
             assert "hermes:api" not in page.locator("body").inner_text()
         finally:
             browser.close()
+
+
+def _open(playwright, workbench, native_bundle):
+    browser = playwright.chromium.launch(headless=True)
+    page = browser.new_page()
+    if native_bundle:
+        page.route("**/app.js", lambda route: route.fulfill(path=str(native_bundle), content_type="text/javascript"))
+    page.goto(workbench)
+    page.get_by_text("Add the other perspective", exact=True).click()
+    return browser, page
+
+
+@pytest.mark.parametrize("adapter", ["standalone", "native_adapter_contract"])
+def test_a_bad_file_is_never_reported_as_a_backend_failure(workbench, tmp_path, adapter):
+    """The browser's JSON.parse message quotes the file, which must not trip the connection heuristics."""
+    native_bundle = _native_harness(tmp_path) if adapter == "native_adapter_contract" else None
+    with sync_playwright() as playwright:
+        browser, page = _open(playwright, workbench, native_bundle)
+        try:
+            requests = []
+            page.on("request", lambda request: requests.append(request.url) if "/import" in request.url else None)
+            page.get_by_label("Import peer bundle", exact=True).set_input_files(
+                # Short enough that V8 quotes all of it in the JSON.parse message.
+                {"name": "notes.json", "mimeType": "application/json", "buffer": b"Network error"}
+            )
+            expect(page.get_by_text("This file is not valid JSON", exact=False)).to_be_visible()
+            assert "Could not reach" not in page.locator("body").inner_text()
+            assert requests == []
+        finally:
+            browser.close()
+
+
+@pytest.mark.parametrize("adapter", ["standalone", "native_adapter_contract"])
+def test_a_proxy_error_page_reads_as_a_backend_failure_without_markup(workbench, tmp_path, adapter):
+    native_bundle = _native_harness(tmp_path) if adapter == "native_adapter_contract" else None
+    with sync_playwright() as playwright:
+        browser, page = _open(playwright, workbench, native_bundle)
+        try:
+            page.route(
+                "**/api/plugins/network-xray/import",
+                lambda route: route.fulfill(status=502, content_type="text/html", body="<html><h1>Bad Gateway</h1></html>"),
+            )
+            page.get_by_label("Import peer bundle", exact=True).set_input_files(
+                {"name": "peer.json", "mimeType": "application/json", "buffer": b'{"kind": "probe"}'}
+            )
+            expect(page.get_by_text("The Network X-ray backend failed (HTTP 502).", exact=False)).to_be_visible()
+            body = page.locator("body").inner_text()
+            assert "Bad Gateway" not in body and "<html" not in body and "Check the URL" not in body
+        finally:
+            browser.close()

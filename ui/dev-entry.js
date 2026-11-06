@@ -14,12 +14,10 @@ export const api = {
         body: body === undefined ? undefined : JSON.stringify(body),
         credentials: 'same-origin', signal: controller.signal,
       });
-      const result = await response.json();
-      if (!response.ok) {
-        const detail = result?.detail ?? result?.error;
-        throw new Error(typeof detail === 'string' ? detail : detail?.message || `Backend rejected the request (HTTP ${response.status}). Check the URL or bundle and retry.`);
-      }
-      return result;
+      const text = await response.text();
+      // Same `${status}: ${body}` shape as Hermes Desktop, so the page reads both the same way.
+      if (!response.ok) throw new Error(`${response.status}: ${text}`);
+      return JSON.parse(text);
     } finally { clearTimeout(timeout); }
   },
 };

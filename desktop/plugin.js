@@ -203,9 +203,20 @@ var IPC_WRAPPER = /^\s*Error invoking remote method '[^']*':\s*/;
 var HTTP_STATUS = /^(\d{3}): ([\s\S]*)$/;
 var MARKUP = /^\s*<|<\/?[a-z][\w-]*[\s>/]/i;
 var TIMEOUT_TEXT = /timeout|timed out|deadline|abort|did not answer within/i;
-var TRANSPORT_TEXT = /fetch failed|failed to fetch|network ?error|load failed|socket hang up|econn(?:reset|refused|aborted)|epipe|enotfound|ehostunreach|enetunreach|net::err_|connection (?:closed|reset|refused|lost)|expected json|but got html/i;
+var TRANSPORT_TEXT = /fetch failed|failed to fetch|network ?error|load failed|socket hang up|econn(?:reset|refused|aborted)|epipe|enotfound|ehostunreach|enetunreach|net::err_|connection (?:closed|reset|refused|lost)/i;
+var NOT_TARGET = "This is about the connection to the backend, not evidence about the target URL.";
 var TIMED_OUT_TEXT = "The request timed out. This is not evidence of a DNS or connection failure. Refresh saved results before retrying; the backend may have completed the capture.";
-var UNREACHABLE_TEXT = "Could not reach the Network X-ray backend. This is about the connection to Hermes, not evidence about the target URL. Check that Hermes is running, then refresh saved results before retrying; the backend may have completed the capture.";
+var UNREACHABLE_TEXT = `Could not reach the Network X-ray backend. ${NOT_TARGET} Check that it is running, then refresh saved results before retrying; the backend may have completed the capture.`;
+function localError(message) {
+  const error = new Error(message);
+  error.local = true;
+  return error;
+}
+function statusText(status) {
+  if (status === 401 || status === 403) return `Hermes or a proxy in front of it refused the request (HTTP ${status}). ${NOT_TARGET}`;
+  if (status >= 500) return `The Network X-ray backend failed (HTTP ${status}). ${NOT_TARGET} Refresh saved results before retrying.`;
+  return `Backend rejected the request (HTTP ${status}). Check the URL or bundle and retry.`;
+}
 function errorDetail(error) {
   const raw = typeof error === "string" ? error : typeof error?.message === "string" ? error.message : "";
   const wrapped = IPC_WRAPPER.exec(raw);
@@ -223,12 +234,17 @@ function errorDetail(error) {
   }
   if (typeof detail !== "string" || plain && MARKUP.test(detail)) detail = "";
   const status = Number(match[1]);
-  return { status, message: detail.trim() || `Backend rejected the request (HTTP ${status}). Check the URL or bundle and retry.`, wrapped: Boolean(wrapped) };
+  return { status, message: detail.trim() || statusText(status), wrapped: Boolean(wrapped) };
 }
 function errorMessage(error) {
+  if (error?.local && typeof error.message === "string") return error.message;
   const detail = errorDetail(error);
   if (error?.name === "AbortError" || detail.status === 504 || TIMEOUT_TEXT.test(detail.message)) return TIMED_OUT_TEXT;
-  if (!detail.status && (detail.wrapped || TRANSPORT_TEXT.test(detail.message))) return UNREACHABLE_TEXT;
+  if (!detail.status && (detail.wrapped || TRANSPORT_TEXT.test(detail.message))) {
+    const said = detail.message.trim();
+    if (!detail.wrapped || !said || TRANSPORT_TEXT.test(said) || MARKUP.test(said)) return UNREACHABLE_TEXT;
+    return `Hermes could not complete the request: ${said.length > 300 ? `${said.slice(0, 299)}…` : said} ${NOT_TARGET}`;
+  }
   return detail.message || "The backend could not complete this request. Check the connection and try again.";
 }
 function createOperationGuard(ownerKey) {
@@ -472,12 +488,12 @@ function createApp(React2, api) {
       setNotice("");
       setBusy("import");
       try {
-        if (file.size > MAX_IMPORT_BYTES) throw new Error("Bundle is larger than 128 KiB. Export a single probe JSON file from the collector.");
+        if (file.size > MAX_IMPORT_BYTES) throw localError("Bundle is larger than 128 KiB. Export a single probe JSON file from the collector.");
         let body;
         try {
           body = buildImportPayload(await file.text());
         } catch (cause) {
-          throw new Error(`This file is not valid JSON or contains duplicate keys. Choose an unmodified probe bundle. ${cause.message}`);
+          throw localError(`This file is not valid JSON or contains duplicate keys. Choose an unmodified probe bundle. ${cause.message}`);
         }
         if (!current()) return;
         const result = await request("/import", { method: "POST", body });

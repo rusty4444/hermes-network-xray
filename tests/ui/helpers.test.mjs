@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildImportPayload, createOperationGuard, formatDuration, parseImportText, validateRequest, errorMessage, TIMED_OUT_TEXT, UNREACHABLE_TEXT } from '../../ui/app.js';
+import { buildImportPayload, createOperationGuard, formatDuration, parseImportText, validateRequest, errorMessage, localError, TIMED_OUT_TEXT, UNREACHABLE_TEXT } from '../../ui/app.js';
 
 test('import transport preserves the original JSON number spellings', () => {
   const raw = '{"a":12000.0,"b":-0.0,"c":1.2e4}';
@@ -76,9 +76,37 @@ test('Hermes Desktop rejections show the backend detail, not the IPC wrapper', (
 
 test('markup, empty and non-JSON bodies get a plain status message', () => {
   for (const body of ['<h1>Bad Gateway</h1>', '<!doctype html><html><body>502</body></html>', '']) {
-    assert.equal(errorMessage(desktop(502, body)), 'Backend rejected the request (HTTP 502). Check the URL or bundle and retry.');
+    const shown = errorMessage(desktop(502, body));
+    assert.match(shown, /^The Network X-ray backend failed \(HTTP 502\)\. .*not evidence about the target URL/);
+    assert.doesNotMatch(shown, /Check the URL|</);
   }
   assert.equal(errorMessage(desktop(503, 'Service Unavailable')), 'Service Unavailable');
+  // Only a request the backend judged bad points at the URL or bundle.
+  assert.equal(errorMessage(desktop(400, '<p>bad</p>')), 'Backend rejected the request (HTTP 400). Check the URL or bundle and retry.');
+  for (const status of [401, 403]) {
+    const shown = errorMessage(desktop(status, '<html>denied</html>'));
+    assert.match(shown, new RegExp(`^Hermes or a proxy in front of it refused the request \\(HTTP ${status}\\)\\. .*not evidence about the target URL`));
+  }
+});
+
+test('errors the page raises itself are shown as written', () => {
+  // V8 quotes the start of a bad file in its JSON.parse message, so file text must never be classified.
+  for (const text of ['Network error report', 'connection refused at 09:00', 'fetch failed', 'Request timeout']) {
+    const message = `This file is not valid JSON or contains duplicate keys. Choose an unmodified probe bundle. Unexpected token 'N', "${text}" is not valid JSON`;
+    assert.equal(errorMessage(localError(message)), message);
+  }
+});
+
+test("Hermes's own diagnosis survives when there is no HTTP status", () => {
+  const ipc = message => new Error(`Error invoking remote method 'hermes:api': Error: ${message}`);
+  const proxy = 'Expected JSON from http://127.0.0.1:9119/api/plugins/network-xray/history but the request was redirected (status 302) to https://sso.example/login. This is usually an authentication proxy.';
+  assert.equal(errorMessage(ipc(proxy)), `Hermes could not complete the request: ${proxy} This is about the connection to the backend, not evidence about the target URL.`);
+  assert.match(errorMessage(ipc('Gateway incompatible (runtime_protocol). Use hermes gateway status for recovery.')), /^Hermes could not complete the request: Gateway incompatible/);
+  assert.match(errorMessage(ipc('x'.repeat(1000))), /x…  ?This is about/);
+  // Connection failures and markup still get the plain unreachable text.
+  assert.equal(errorMessage(ipc('connect ECONNREFUSED 127.0.0.1:9119')), UNREACHABLE_TEXT);
+  assert.equal(errorMessage(ipc('<html>proxy</html>')), UNREACHABLE_TEXT);
+  assert.equal(errorMessage(ipc('Timed out connecting to Hermes backend after 20000ms')), TIMED_OUT_TEXT);
 });
 
 test('the plugin host deadline and IPC transport failures are not target evidence', () => {

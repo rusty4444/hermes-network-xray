@@ -4,8 +4,8 @@
 
 The test runner uses disposable HOME/HERMES_HOME directories and removes provider credentials from child environments.
 
-- `python scripts/test.py -q`: **191 tests passed** in two consecutive runs, zero failures or skips, on Python 3.12.13/macOS.
-- `node --test tests/ui/helpers.test.mjs`: **10 tests passed**.
+- `python scripts/test.py -q`: **195 tests passed** in two consecutive runs, zero failures or skips, on Python 3.12.13/macOS.
+- `node --test tests/ui/helpers.test.mjs`: **12 tests passed**.
 - `ruff check .`, `npm run build`, `npm run check` and generated-bundle checks passed.
 - Coverage includes supervised collectors, strict bundles, private storage, comparisons, adapters, HTTP boundaries, synthetic browser contracts and a real loopback browser workflow.
 - Import regressions exercise integral-valued floats, exponent forms and signed zero through the shared UI, both transport adapters and the real router/store. The native-adapter browser harness substitutes the SDK transport boundary; it is not an Electron integration test. Original IDs and digests survive, and tampered imports remain rejected.
@@ -15,15 +15,33 @@ One non-failing development dependency warning reports Starlette's transition fr
 
 ## Hermes Desktop error display (after `75f1e45`)
 
-In Hermes Desktop, `ctx.rest` rejects with `${status}: ${body}` (`apps/desktop/electron/api-transport.ts`). For every status except 404, Electron's `ipcRenderer.invoke` then prefixes `Error invoking remote method 'hermes:api': Error: `. Up to `75f1e45` the page showed that text verbatim, so a rejected import read `Error invoking remote method 'hermes:api': Error: 400: {"detail": ...}`. The page now strips the prefix the way Hermes does (`src/store/notifications.ts` `readableError`) and shows the backend's `detail`. A body that is not JSON is never shown if it contains markup. A 504 from the plugin host ("did not answer within") reads as a timeout, as an aborted request already did. A failure with no HTTP status (`TypeError: fetch failed` behind the IPC prefix, or the browser's `Failed to fetch`) says it is about the connection to Hermes, not evidence about the target URL.
+In Hermes Desktop, `ctx.rest` rejects with `${status}: ${body}` (`apps/desktop/electron/api-transport.ts`). For every status except 404, Electron's `ipcRenderer.invoke` then prefixes `Error invoking remote method 'hermes:api': Error: `. Up to `75f1e45` the page showed that text verbatim, so a rejected import read `Error invoking remote method 'hermes:api': Error: 400: {"detail": ...}`. The page now strips the prefix the way Hermes does (`src/store/notifications.ts` `readableError`) and shows the backend's `detail`. A body that is not JSON is never shown if it contains markup. A 504 from the plugin host ("did not answer within") reads as a timeout, as an aborted request already did. A failure with no HTTP status says it is about the connection to the backend, not evidence about the target URL. Desktop's local plugin path uses Node `http.request` (`electron/main.ts` `fetchJson`), so those arrive as `Error: connect ECONNREFUSED host:port`, `Error: socket hang up` or `Error: Timed out connecting to Hermes backend after 20000ms` behind the IPC prefix. The standalone workbench gets the browser's `Failed to fetch`.
 
-The native-adapter browser harness (`tests/ui/native-transport-harness.js`) now rejects in exactly that shape. Before, it threw the bare `detail`, which is why the wrapped text was never caught.
+The native-adapter browser harness (`tests/ui/native-transport-harness.js`) now rejects in exactly that shape, including `connect ECONNREFUSED` for a failed connection. Before, it threw the bare `detail`, which is why the wrapped text was never caught.
 
 | Regression | On `75f1e45` | Fixed |
 |---|---|---|
 | `test_browser.py::test_a_rejected_import_shows_the_backend_detail_in_both_adapters[native_adapter_contract]` (a real 400 from the real router) | fails | passes |
 | `…[standalone]` | passes | passes |
 | `helpers.test.mjs`: Desktop rejections show the detail; markup, empty and non-JSON bodies; plugin-host deadline and IPC transport failures | 3 of 3 fail (run against `75f1e45`'s `ui/app.js` with the new constants inlined) | pass |
+
+### Review of `3c0c1f5` and follow-up fixes
+
+An independent QUALITY review of the frozen `3c0c1f5` (manifest `3ca5796e…`) passed with two minor findings and three nits. The report is kept privately with its probes. All five were fixed:
+
+- **F1 (minor):** a non-JSON file that started with words like `Network error` read as "Could not reach the backend", because V8 quotes the file in its `JSON.parse` message. Errors the page raises itself (`localError`) are now shown as written, and no request is sent.
+- **F2 (minor):** every status-less Desktop rejection showed one generic sentence, which hid Hermes's own diagnosis (an authentication-proxy redirect, a missing endpoint, an incompatible gateway). That text is now shown, up to 300 characters, after "Hermes could not complete the request:". Connection failures and markup still get the plain unreachable text.
+- **F3 (nit):** a markup or empty body said "Check the URL or bundle" for every status. Now only 4xx request errors say that. 401/403 name Hermes or a proxy, 5xx say the backend failed, and both say it is not evidence about the target URL.
+- **F4 (nit):** the docs and the harness used the undici shape. They now use the Node `http.request` shapes above.
+- **F5 (nit):** the standalone workbench showed V8's parse error, quoting `<html>`, for a non-JSON error body. It now passes `${status}: ${body}` to the same parser as Desktop. The unreachable text no longer names Hermes, because the standalone backend is `scripts/serve.py`.
+
+| Regression | On `3c0c1f5` | Fixed |
+|---|---|---|
+| `test_browser.py::test_a_bad_file_is_never_reported_as_a_backend_failure` (both adapters) | 2 of 2 fail | pass |
+| `test_browser.py::test_a_proxy_error_page_reads_as_a_backend_failure_without_markup` (both adapters) | 2 of 2 fail | pass |
+| `helpers.test.mjs`: status-aware markup text; errors the page raises itself; Hermes's diagnosis without a status | 3 of 3 fail (run against `3c0c1f5`'s `ui/app.js` with a `localError` export added) | pass |
+
+The reviewer's reproducers were re-run unchanged from scratch copies against the fixed commit. Their results are listed in the next subsection.
 
 ## Hermes integration
 
