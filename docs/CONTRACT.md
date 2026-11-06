@@ -82,7 +82,7 @@ Service API (parent/adapters own):
 Native tools planned: `network_xray_probe(url,label,connect_ip?)`, `network_xray_import(bundle_json)`, `network_xray_compare(left_id,right_id)`, `network_xray_history()`; all JSON strings returned. Tool output should expose IDs plus results sufficient for agent interpretation. No background collector, no LLM hooks, no override/middleware.
 
 REST planned own namespace only, final registration per SDK preflight:
-- GET /health -> {"ok":true,"version":"0.1.0"}
+- GET /health -> {"ok":true,"version":"0.1.1"}
 - GET /probes -> list_probes()
 - POST /probe JSON {url,label,connect_ip?} -> collect()
 - POST /import JSON {bundle_json:<original JSON text>} -> import_probe(); reject object transport so JavaScript cannot change float encodings before the digest check

@@ -1,6 +1,6 @@
 [project]
 name = "hermes-network-xray"
-version = "0.1.0"
+version = "0.1.1"
 description = "Evidence-backed network diagnostics across vantage points for Hermes Agent"
 requires-python = ">=3.10"
 dependencies = []
